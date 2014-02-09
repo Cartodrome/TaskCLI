@@ -2,10 +2,13 @@ import cmd
 import time
 import datetime
 import textwrap
+import pickle
+import os
+
 
 class TaskCLI(cmd.Cmd):
     """CLI that can be used to carry out simple operations."""
-    def __init__(self, cli_level=0):
+    def __init__(self, cli_level=0, tasks={}):
         # Initiate the base class.
         cmd.Cmd.__init__(self)
         # Overwrite the prompt with a custom version.
@@ -15,7 +18,7 @@ class TaskCLI(cmd.Cmd):
         self._name = ""
 
         # Dictionary for storing Tasks.
-        self._tasks = {}
+        self._tasks = tasks
 
         # Wrapper for formatting long strings
         self._wrapper = textwrap.TextWrapper(width=50)
@@ -100,17 +103,6 @@ class TaskCLI(cmd.Cmd):
         return completions
 
     def do_EOF(self, line):
-        return True
-
-    def do_exit(self, line):
-        """do_exit
-
-        Purpose: Called to exit the current CLI.
-        """
-        try:
-            self.stop()
-        except:
-            pass
         return True
 
     def help_exit(self):
@@ -250,11 +242,30 @@ class TaskCLI(cmd.Cmd):
             joiner = "\n      " + " " * len(argument)
             print joiner.join(self._wrapper.wrap(text))
 
+
 class BaseCLI(TaskCLI):
     """The Base CLI Object called by main"""
-    def __init__(self):
+    def __init__(self, tasks={}):
         # Initiate the base class.
-        TaskCLI.__init__(self)
+        TaskCLI.__init__(self, tasks=tasks)
+
+        # Check to see if there are files pickled from today.
+
+    def do_exit(self, line):
+        """do_exit
+
+        Purpose: Called to exit the Base CLI and pickle the current tasks so
+                 that we don't lose the data.
+        """
+        # Use the date as the filename.
+        filename = datetime.datetime.fromtimestamp(
+            time.time()).strftime("%d-%m-%Y.p")
+
+        # Save off the BaseCLI and subsequently all child objects.
+        pickle.dump(self._tasks, open(filename, "wb"))
+        
+        return True
+
 
 class Task(TaskCLI):
     """The Task CLI used when Tasks are created."""
@@ -287,6 +298,15 @@ class Task(TaskCLI):
             self._timer = None
         except:
             print "Warning: Task %s was not timing!" % self._name
+
+    def do_exit(self, line):
+        """do_exit
+
+        Purpose: Called to exit the current CLI.
+        """
+        self.stop()
+        return True
+
 
 class Timer():
     """Class for timing things."""
@@ -348,4 +368,14 @@ class Timer():
         return self._status
 
 if __name__ == '__main__':
-    BaseCLI().cmdloop("Welcome to Sam's CLI")
+
+    filename = datetime.datetime.fromtimestamp(
+        time.time()).strftime("%d-%m-%Y.p")
+    if os.path.isfile(filename):
+        tasks = pickle.load(open(filename, "rb"))
+        msg = "Welcome to the TaskCLI, Loaded previous data."
+    else:
+        tasks = {}
+        msg = "Welcome to TaskCLI, no data to load."
+    
+    BaseCLI(tasks=tasks).cmdloop(msg)
