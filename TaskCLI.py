@@ -4,11 +4,12 @@ import datetime
 import textwrap
 import pickle
 import os
+import sys
 
 
 class TaskCLI(cmd.Cmd):
     """CLI that can be used to carry out simple operations."""
-    def __init__(self, cli_level=0, tasks={}):
+    def __init__(self, tasks={}):
         # Initiate the base class.
         cmd.Cmd.__init__(self)
         # Overwrite the prompt with a custom version.
@@ -20,11 +21,23 @@ class TaskCLI(cmd.Cmd):
         # Dictionary for storing Tasks.
         self._tasks = tasks
 
-        # Wrapper for formatting long strings
-        self._wrapper = textwrap.TextWrapper(width=50)
+        # The current task
+        self._current_task = None
 
-        # How nested are we in the CLI
-        self._cli_level = cli_level
+        # Wrapper for formatting long strings
+        self._wrapper = self._get_wrapper()
+
+    def __getstate__(self):
+        del self.__dict__["stdout"]
+        del self.__dict__["stdin"]
+        del self.__dict__["_wrapper"]
+        return self.__dict__
+
+    def __setstate__(self, d):
+        self.__dict__ = d
+        self.__dict__["stdout"] = sys.stdout
+        self.__dict__["stdin"] = sys.stdin
+        self.__dict__["_wrapper"] = self._get_wrapper()
 
     def do_addtask(self, task):
         """do_addtask
@@ -36,22 +49,27 @@ class TaskCLI(cmd.Cmd):
 
         Returns: Nothing.
         """
-        if task in self._tasks:
-            print ("Task already exists, please choose another name.\n"
-                   "Current tasks are:\n  %s" % 
-                   "\n  ".join(self._tasks))
+        if "-" in task:
+            self._to_screen("Task names must not contain '-'")
+            return
+
+        try:
+            task_name = "-".join([self._current_task.get_name(), task])
+        except:
+            task_name = task
+
+        if task_name in self._tasks:
+            self._to_screen("Task already exists, please choose another name."
+                            "\nCurrent tasks are:\n  %s" % 
+                            "\n  ".join(self._tasks))
+            return
         else:
-            name = "%s-%s" % (self._name, task) 
-            new_task = Task(name=name,cli_level=self._cli_level + 1)
-            self._tasks[task] = new_task
-            print "Created new task of name: %s" % task
+            new_task = Task(name=task_name,
+                            parent=self._current_task)
+            self._tasks[task_name] = new_task
+            self._to_screen("Created new task of name: %s" % task)
 
     def help_addtask(self):
-        """help_addtask
-
-        Purpose: Print the help text for addtask when called with:
-                   help addtask.
-        """
         description = ("Creates a new task. Once the task is started " 
                        "notes can be made against it and the time " 
                        "spent on the task is tracked. Tasks themselves " 
@@ -69,19 +87,26 @@ class TaskCLI(cmd.Cmd):
 
         Returns: Noting.
         """
-        if task not in self._tasks:
-            print ("No Task exists of that name. Current tasks are:"
-                   "\n  %s" % "\n  ".join(self._tasks))
+        try:
+            task = self._tasks[task]
+        except:
+            self._to_screen("No Task exists of that name. Current tasks are:"
+                            "\n  %s" % "\n  ".join(self._tasks))
+            return
+
+        # Check that the only running tasks are parents of this task.
+        if self._current_task != task.get_parent():
+            self._to_screen("Unable to start this task Either another task is "
+                            "already running, this task has a parent task "
+                            "which hasn't been started yet or this task is "
+                            "already running. Parent is: %s" % 
+                            task.get_parent().get_name())
         else:
-            self._tasks[task].start()
-            self._switch_cli(new_cli=self._tasks[task])
+            task.start()
+            self._set_new_prompt(text=task.get_name())
+            self._current_task = task
             
     def help_starttask(self):
-        """help_addtask
-
-        Purpose: Print the help text for starttask when called with:
-                   help starttask.
-        """
         description = ("Starts an existing task. Once the task is "
                        "started notes can be made against it and the "
                        "time spent on the task is tracked.")
@@ -92,7 +117,7 @@ class TaskCLI(cmd.Cmd):
     def complete_starttask(self, text, line, begidx, endidx):
         """complete_starttask
 
-        Purpose: Provides autocomplete functionality for teh starttask
+        Purpose: Provides autocomplete functionality for the starttask
                  command.
         """
         if not text:
@@ -102,7 +127,52 @@ class TaskCLI(cmd.Cmd):
                            t.startswith(text)]
         return completions
 
+    def do_stoptask(self, line):
+        """do_stoptask
+
+        Purpose: Stop the current running task.
+        """
+        try:
+            self._current_task.stop()
+        except:
+            self._to_screen("No tasks currently running.")
+            return
+
+        self._current_task = self._current_task.get_parent()
+        try:
+            self._set_new_prompt(text=self._current_task.get_name())
+        except:
+            self._set_new_prompt(text="")
+
+    def help_stoptask(self):
+        description = ("Stop's the current running task. If the task had a "
+                       "parent it drops back down to the parent.")
+        arguments = {}
+        self._help_text(description=description,
+                        arguments=arguments)        
+
     def do_EOF(self, line):
+        return True
+
+    def do_exit(self, line):
+        """do_exit
+
+        Purpose: Called to exit the Base CLI and pickle the current tasks so
+                 that we don't lose the data.
+        """
+        # Stop all running tasks and return the CLI to the start before saving.
+        for task in self._get_running_tasks():
+            task.stop()
+        self._current_task = None
+        self._set_new_prompt(text="")
+
+        # Use the date as the filename.
+        filename = datetime.datetime.fromtimestamp(
+            time.time()).strftime("%d-%m-%Y.p")
+
+        # Save off the BaseCLI and subsequently all child objects.
+        pickle.dump(self, open(filename, "wb"))
+        
         return True
 
     def help_exit(self):
@@ -111,67 +181,61 @@ class TaskCLI(cmd.Cmd):
         Pupose: Prints the help text for do_exit when help exit is
                 called.
         """
-        description = ("This exits the current task. The Timer for the "
-                       "task will also be stopped. If this is the base "
-                       "level of the CLI then the python will exit.")
+        description = ("This exits the CLI and saves off any data in a python "
+                       "picklr file.")
         arguments = {}
         self._help_text(description=description,
                         arguments=arguments)        
 
-    def do_times(self, line, called=True):
+    def do_times(self, line):
         """do_times
 
         Purpose: Prints the times for all tasks below this object.
-
-        Params: None.
-
-        Returns: None.
         """
         task_times = {}
         # Get they times for all sub tasks.
         for task in self._tasks.values():
-            task_times.update(task.do_times(line, called=False))
+            task_times[task.get_name()] = self._format_timers(task)
 
-        # The base cli level doesn't have any tasks.
-        if self._cli_level > 0:
-            task_times.update(self._format_timers())
-
-        # If this is where the CLI called the function print the
-        # results.
-        if called:
-            for task, details in sorted(task_times.items(), 
-                                        key=lambda x: x[1]):
-                for detail in details:
-                    print detail
-                print ""
-        else:
-            return task_times
+        for task, details in sorted(task_times.items(), 
+                                    key=lambda x: x[1]):
+            for detail in details:
+                print detail
+            print ""
 
     def help_times(self):
-        """help_times
-
-        Purpose: Prints the helo text for do_times when help times is
-                 called. 
-        """
-        description = "Prints the times for this task and all subtasks." 
+        description = "Prints the time spent on tasks." 
         arguments = {}
         self._help_text(arguments=arguments,
                         description=description)
 
-    def _format_timers(self):
+    def do_tasks(self, line):
+        """do_tasks
+
+        Purpose: Prints a list of all the current tasks.
+        """
+        for task in self._tasks.values():
+            print task.get_name() 
+
+    def help_tasks(self):
+        description = "Prints a list of all tasks." 
+        arguments = {}
+        self._help_text(arguments=arguments,
+                        description=description)        
+
+    def _format_timers(self, task):
         """_format_timers
         """
-        task_times = {}
-        title    = "Task: %s" % self.get_name()
+        title    = "Task: %s" % task.get_name()
         headers  = "DATE\t\t START\t STOP\t TOTAL\t STATUS"
         template = "%s\t %s\t %s\t %s\t %s"
         footer   = "TOTAL:\t\t \t \t %s\t %s"        
-        task_times[self._name] = []
-        task_times[self._name].append(title)
-        task_times[self._name].append(headers)
-        total_status = "Stopped"
+        task_times = []
+        task_times.append(title)
+        task_times.append(headers)
+        total_status = task.status()
         total_time = 0
-        for timer in self._timers:
+        for timer in task._timers:
             date, start = timer.start_time()
             dummy, stop = timer.stop_time()
             time_secs   = timer.total_time().total_seconds()
@@ -179,15 +243,13 @@ class TaskCLI(cmd.Cmd):
             status      = timer.status()
 
             line = template % (date, start, stop, time_str, status)
-            task_times[self._name].append(line)
+            task_times.append(line)
 
-            if status == "Running":
-                total_status = "Running"
             if time_secs:
                 total_time += time_secs
 
         final_line = footer % (self._format_seconds(total_time), total_status)
-        task_times[self._name].append(final_line)
+        task_times.append(final_line)
 
         return task_times
 
@@ -197,15 +259,6 @@ class TaskCLI(cmd.Cmd):
         hours = int(total)/(60*60)
         mins  = (int(total)/60)%60
         return "%dh%02dm" % (hours, mins)  
-
-    def _switch_cli(self, new_cli):
-        """_switch_cli
-
-        Purpose: Changes the cli level that the user is using.
-
-        Params:  new_cli - The TaskCLI object we are changing to.
-        """
-        new_cli.cmdloop("Entered new task: %s" % new_cli.get_name())
     
     def _set_new_prompt(self, text=None):
         """ _set_new_prompt
@@ -242,52 +295,40 @@ class TaskCLI(cmd.Cmd):
             joiner = "\n      " + " " * len(argument)
             print joiner.join(self._wrapper.wrap(text))
 
+    def _get_wrapper(self):
+        return textwrap.TextWrapper(width=50)
 
-class BaseCLI(TaskCLI):
-    """The Base CLI Object called by main"""
-    def __init__(self, tasks={}):
-        # Initiate the base class.
-        TaskCLI.__init__(self, tasks=tasks)
+    def _to_screen(self, message):
+        for line in self._get_wrapper().wrap(message):
+            print line
 
-        # Check to see if there are files pickled from today.
+    def _get_running_tasks(self):
+        return [task for task in self._tasks.values() 
+                if task.status() == "Running"]
 
-    def do_exit(self, line):
-        """do_exit
-
-        Purpose: Called to exit the Base CLI and pickle the current tasks so
-                 that we don't lose the data.
-        """
-        # Use the date as the filename.
-        filename = datetime.datetime.fromtimestamp(
-            time.time()).strftime("%d-%m-%Y.p")
-
-        # Save off the BaseCLI and subsequently all child objects.
-        pickle.dump(self._tasks, open(filename, "wb"))
-        
-        return True
-
-
-class Task(TaskCLI):
+class Task():
     """The Task CLI used when Tasks are created."""
-    def __init__(self, name, cli_level):
-        # Initiate the base class.
-        TaskCLI.__init__(self, cli_level=cli_level)
-
+    def __init__(self, name, parent):
         self._name = name
         self._timers = []
         self._timer = None
-
-        self._set_new_prompt(text=self._name)
+        self._parent = parent
+        self._status = "Stopped"
 
     def get_name(self):
         """Getter for the Tasks name."""
         return self._name
+
+    def get_parent(self):
+        """Getter for the Tasks parent."""
+        return self._parent
 
     def start(self):
         """Called to start the task. Kicks off a Timer."""
         if not self._timer:
             self._timer = Timer()
             self._timers.append(self._timer)
+            self._status = "Running"
         else:
             print "Warning: Task %s already started!" % self._name
 
@@ -296,17 +337,13 @@ class Task(TaskCLI):
         try:
             self._timer.stop()
             self._timer = None
+            self._status = "Stopped"
         except:
             print "Warning: Task %s was not timing!" % self._name
 
-    def do_exit(self, line):
-        """do_exit
-
-        Purpose: Called to exit the current CLI.
-        """
-        self.stop()
-        return True
-
+    def status(self):
+        """Returns the status of the task, either "Running" or "Stopped"."""
+        return self._status
 
 class Timer():
     """Class for timing things."""
@@ -314,6 +351,7 @@ class Timer():
         self._start_time = None
         self._stop_time = None
         self._status = None
+        self.total_time
         self.start()
 
     def start(self):
@@ -367,15 +405,18 @@ class Timer():
         """
         return self._status
 
+
 if __name__ == '__main__':
 
     filename = datetime.datetime.fromtimestamp(
         time.time()).strftime("%d-%m-%Y.p")
     if os.path.isfile(filename):
-        tasks = pickle.load(open(filename, "rb"))
+    #    tasks = pickle.load(open(filename, "rb"))
         msg = "Welcome to the TaskCLI, Loaded previous data."
+        cli = pickle.load(open(filename, "rb"))
     else:
-        tasks = {}
+    #    tasks = {}
         msg = "Welcome to TaskCLI, no data to load."
-    
-    BaseCLI(tasks=tasks).cmdloop(msg)
+        cli = TaskCLI()
+
+    cli.cmdloop(msg)
