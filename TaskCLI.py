@@ -27,10 +27,16 @@ class TaskCLI(cmd.Cmd):
         # Wrapper for formatting long strings
         self._wrapper = self._get_wrapper()
 
+        # Get the logfile.
+        self._logfile = self._get_logfile()
+        self._log("Started TaskCLI")
+
     def __getstate__(self):
+        self._log("Saving TaskCLI data")
         del self.__dict__["stdout"]
         del self.__dict__["stdin"]
         del self.__dict__["_wrapper"]
+        del self.__dict__["_logfile"]
         return self.__dict__
 
     def __setstate__(self, d):
@@ -38,6 +44,8 @@ class TaskCLI(cmd.Cmd):
         self.__dict__["stdout"] = sys.stdout
         self.__dict__["stdin"] = sys.stdin
         self.__dict__["_wrapper"] = self._get_wrapper()
+        self.__dict__["_logfile"] = self._get_logfile()
+        self._log("Restarting TaskCLI")
 
     def do_addtask(self, task):
         """do_addtask
@@ -67,7 +75,8 @@ class TaskCLI(cmd.Cmd):
             new_task = Task(name=task_name,
                             parent=self._current_task)
             self._tasks[task_name] = new_task
-            self._to_screen("Created new task of name: %s" % task)
+            self._to_screen("Created new task of name: %s" % task_name)
+            self._log("Added a new task: %s" % task_name)
 
     def help_addtask(self):
         description = ("Creates a new task. Once the task is started " 
@@ -99,12 +108,12 @@ class TaskCLI(cmd.Cmd):
             self._to_screen("Unable to start this task Either another task is "
                             "already running, this task has a parent task "
                             "which hasn't been started yet or this task is "
-                            "already running. Parent is: %s" % 
-                            task.get_parent().get_name())
+                            "already running.")
         else:
             task.start()
             self._set_new_prompt(text=task.get_name())
             self._current_task = task
+            self._log("Started Task: %s" % self._current_task.get_name())
             
     def help_starttask(self):
         description = ("Starts an existing task. Once the task is "
@@ -134,6 +143,7 @@ class TaskCLI(cmd.Cmd):
         """
         try:
             self._current_task.stop()
+            self._log("Stopped Task: %s" % self._current_task.get_name())
         except:
             self._to_screen("No tasks currently running.")
             return
@@ -165,6 +175,8 @@ class TaskCLI(cmd.Cmd):
             task.stop()
         self._current_task = None
         self._set_new_prompt(text="")
+
+        self._log("Exiting TaskCLI")
 
         # Use the date as the filename.
         filename = datetime.datetime.fromtimestamp(
@@ -305,6 +317,16 @@ class TaskCLI(cmd.Cmd):
     def _get_running_tasks(self):
         return [task for task in self._tasks.values() 
                 if task.status() == "Running"]
+
+    def _get_logfile(self):
+        filename = datetime.datetime.fromtimestamp(
+            time.time()).strftime("cli_logs-%d-%m-%Y.txt")
+        return open(filename, "a")
+
+    def _log(self, message):
+        timestamp = datetime.datetime.fromtimestamp(
+            time.time()).strftime("%H:%M:%S")
+        self._logfile.write("\n[%s] %s" % (timestamp, message)) 
 
 class Task():
     """The Task CLI used when Tasks are created."""
