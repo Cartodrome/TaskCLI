@@ -47,6 +47,23 @@ class TaskCLI(cmd.Cmd):
         self.__dict__["_logfile"] = self._get_logfile()
         self._log("Restarting TaskCLI")
 
+    def do_M(self, line):
+        """do_M
+
+        Purpose: Logs a line of text to the log file.
+
+        Params:  line - The line of text to be logged. 
+
+        Returns: Nothing.
+        """
+        self._log(line)
+
+    def help_M(self):
+        description = ("Logs a line of text to the output file.")
+        arguments = {"line" : "The line to be logged to file"}
+        self._help_text(description=description,
+                        arguments=arguments)    
+
     def do_addtask(self, task):
         """do_addtask
 
@@ -128,6 +145,8 @@ class TaskCLI(cmd.Cmd):
 
         Purpose: Provides autocomplete functionality for the starttask
                  command.
+
+        Return:  Nothing
         """
         if not text:
             completions = self._tasks.keys()
@@ -140,6 +159,8 @@ class TaskCLI(cmd.Cmd):
         """do_stoptask
 
         Purpose: Stop the current running task.
+
+        Returns: Nothing
         """
         try:
             self._current_task.stop()
@@ -169,6 +190,8 @@ class TaskCLI(cmd.Cmd):
 
         Purpose: Called to exit the Base CLI and pickle the current tasks so
                  that we don't lose the data.
+
+        Returns: Nothing
         """
         # Stop all running tasks and return the CLI to the start before saving.
         for task in self._get_running_tasks():
@@ -177,6 +200,7 @@ class TaskCLI(cmd.Cmd):
         self._set_new_prompt(text="")
 
         self._log("Exiting TaskCLI")
+        self._log("\n" + self.do_times("", user_called=False))
 
         # Use the date as the filename.
         filename = datetime.datetime.fromtimestamp(
@@ -199,12 +223,16 @@ class TaskCLI(cmd.Cmd):
         self._help_text(description=description,
                         arguments=arguments)        
 
-    def do_times(self, line):
+    def do_times(self, line, user_called=True):
         """do_times
 
         Purpose: Prints the times for all tasks below this object.
+
+        Returns: The details printed to screen.
         """
         task_times = {}
+        print_out = ""
+
         # Get they times for all sub tasks.
         for task in self._tasks.values():
             task_times[task.get_name()] = self._format_timers(task)
@@ -212,8 +240,13 @@ class TaskCLI(cmd.Cmd):
         for task, details in sorted(task_times.items(), 
                                     key=lambda x: x[1]):
             for detail in details:
-                print detail
-            print ""
+                print_out += detail + "\n"
+            print_out += "\n"
+
+        print print_out
+
+        if not user_called:
+            return print_out
 
     def help_times(self):
         description = "Prints the time spent on tasks." 
@@ -233,8 +266,14 @@ class TaskCLI(cmd.Cmd):
         description = "Prints a list of all tasks." 
         arguments = {}
         self._help_text(arguments=arguments,
-                        description=description)        
+                        description=description)
 
+    def help_help(self):
+        description = ("Returns instructions on how to use a command. Can be "
+                       "called with 'help' <command> or '?' <command>.") 
+        arguments = {"command": "The command you require help with"}
+        self._help_text(arguments=arguments,
+                        description=description)
     def _format_timers(self, task):
         """_format_timers
         """
