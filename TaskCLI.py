@@ -5,6 +5,7 @@ import textwrap
 import pickle
 import os
 import sys
+import thread
 
 
 class TaskCLI(cmd.Cmd):
@@ -30,6 +31,9 @@ class TaskCLI(cmd.Cmd):
         # Get the logfile.
         self._logfile = self._get_logfile()
         self._log("Started TaskCLI")
+
+        # Create the object that contains the shortcuts.
+        self._shortcut = Shortcut()
 
     def __getstate__(self):
         self._log("Saving TaskCLI data")
@@ -62,7 +66,26 @@ class TaskCLI(cmd.Cmd):
         description = ("Logs a line of text to the output file.")
         arguments = {"line" : "The line to be logged to file"}
         self._help_text(description=description,
-                        arguments=arguments)    
+                        arguments=arguments)  
+
+    def do_SC(self, text):
+        """do_SC
+
+        Purpose: Takes a line of text and passes it to the Shortcut class. If
+                 the text matches a shortcut in the class it will be executed.
+
+        Returns: Nothing
+        """
+        try:
+            print self._shortcut.run_cmd(text)
+        except:
+            pass
+
+    def help_SC(self):
+        description = ("Pass text to SC to execute a shortcut")
+        arguments = {"text" : "The text to be passed to SC"}
+        self._help_text(description=description,
+                        arguments=arguments)          
 
     def do_addtask(self, task):
         """do_addtask
@@ -465,6 +488,35 @@ class Timer():
         Returns: The current status: "Stopped" OR "Running"
         """
         return self._status
+
+
+class Shortcut():
+    def __init__(self):
+        self._const = {
+            "ssh": (self._ssh, "tool for sshing"),
+        }
+
+    def run_cmd(self, text):
+        cmd, args = self._parse_input(text)
+
+        try:
+            func = self._const[cmd][0]
+            return func(args)
+        except:
+            return ("Shortcut '%s' does not exist, shortcuts:\n%s" % (cmd,
+                    self._summary()))
+
+    def _ssh(self, args):
+        print "ssh, %s" % args
+
+    def _summary(self):
+        summary = ""
+        for sc in self._const:
+            summary += " %s:\t%s\n" % (sc, self._const[sc][1])
+        return summary
+
+    def _parse_input(self, text):
+        return text.split()[0], text.split()[1:]
 
 
 if __name__ == '__main__':
