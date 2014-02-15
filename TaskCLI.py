@@ -41,6 +41,7 @@ class TaskCLI(cmd.Cmd):
         del self.__dict__["stdin"]
         del self.__dict__["_wrapper"]
         del self.__dict__["_logfile"]
+        del self.__dict__["_shortcut"]
         return self.__dict__
 
     def __setstate__(self, d):
@@ -49,6 +50,7 @@ class TaskCLI(cmd.Cmd):
         self.__dict__["stdin"] = sys.stdin
         self.__dict__["_wrapper"] = self._get_wrapper()
         self.__dict__["_logfile"] = self._get_logfile()
+        self.__dict__["_shortcut"] = Shortcut()
         self._log("Restarting TaskCLI")
 
     def do_M(self, line):
@@ -78,6 +80,7 @@ class TaskCLI(cmd.Cmd):
         """
         try:
             print self._shortcut.run_cmd(text)
+            self._log("SC: %s" % text)
         except:
             pass
 
@@ -205,8 +208,8 @@ class TaskCLI(cmd.Cmd):
         self._help_text(description=description,
                         arguments=arguments)        
 
-    def do_EOF(self, line):
-        return True
+    #def do_EOF(self, line):
+    #    return True
 
     def do_exit(self, line):
         """do_exit
@@ -266,9 +269,9 @@ class TaskCLI(cmd.Cmd):
                 print_out += detail + "\n"
             print_out += "\n"
 
-        print print_out
-
-        if not user_called:
+        if user_called:
+            print print_out
+        else:
             return print_out
 
     def help_times(self):
