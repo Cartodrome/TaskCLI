@@ -1,0 +1,11 @@
+<!doctype html>
+<title>HomePage</title>
+<link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="style.css" type="text/css">
+<div class=page>
+<h1>Home Page</h1>
+  <p>The following URLs are available:</p>
+{% for name, url in urls %}	
+  <p><a href={{ url }}>{{ name }}</a></p>
+{% endfor %}
+</div>
