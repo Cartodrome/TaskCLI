@@ -10,20 +10,20 @@ import argparse
 
 class TaskCLI(cmd.Cmd):
     """CLI that can be used to carry out simple operations."""
-    def __init__(self, tasks={}, app=None):
+    def __init__(self, tasks={}):
         # Initiate the base class.
         cmd.Cmd.__init__(self)
         # Overwrite the prompt with a custom version.
         self._set_new_prompt(text="")
-
-        # Name of the object
-        self._name = ""
 
         # Dictionary for storing Tasks.
         self._tasks = tasks
 
         # The current task
         self._current_task = None
+
+        # a list of messages
+        self.messages = []
 
         # Wrapper for formatting long strings
         self._wrapper = self._get_wrapper()
@@ -34,9 +34,6 @@ class TaskCLI(cmd.Cmd):
 
         # Create the object that contains the shortcuts.
         self._shortcut = Shortcut()
-
-        # If a web app is passed then save it off
-        self.app = app
 
     def __getstate__(self):
         self._log("Saving TaskCLI data")
@@ -65,7 +62,7 @@ class TaskCLI(cmd.Cmd):
 
         Returns: Nothing.
         """
-        self._log(line)
+        self.messages.append(self._log(line))
 
     def help_M(self):
         description = ("Logs a line of text to the output file.")
@@ -211,8 +208,8 @@ class TaskCLI(cmd.Cmd):
         self._help_text(description=description,
                         arguments=arguments)        
 
-    #def do_EOF(self, line):
-    #    return True
+    def do_EOF(self, line):
+        self.do_exit(line)
 
     def do_exit(self, line):
         """do_exit
@@ -407,7 +404,10 @@ class TaskCLI(cmd.Cmd):
     def _log(self, message):
         timestamp = datetime.datetime.fromtimestamp(
             time.time()).strftime("%H:%M:%S")
-        self._logfile.write("\n[%s] %s" % (timestamp, message)) 
+        task_name = " " if not self._current_task else self._current_task.name
+        line = "\n[%s] [%s] %s" % (timestamp, task_name, message)
+        self._logfile.write(line)
+        return line 
 
 class Task():
     """The Task CLI used when Tasks are created."""
@@ -560,18 +560,19 @@ def format_seconds(seconds):
     mins  = (int(seconds)/60)%60
     return "%dh%02dm" % (hours, mins)  
 
-def get_sub_tasks(task):
+def get_sub_tasks(cli, task):
     """get_sub_tasks
 
     Gets the sub_tasks of a given task.
 
-    Params:  task - The Task object.
+    Params:  cli  - The TaskCLI object that contains the Task.
+             task - The Task object.
 
     Returns: A list of child Tasks.
     """
     sub_tasks = cli.get_tasks(parent=task)
     for sub_task in sub_tasks:
-        sub_tasks.extend(get_sub_tasks(sub_task))
+        sub_tasks.extend(get_sub_tasks(cli, sub_task))
     return sub_tasks 
 
 def get_args():
@@ -589,74 +590,80 @@ def get_args():
 
     return args
 
-def start_cli():
+def start_cli(cli, msg="Welcome to TaskCLI"):
+    cli.cmdloop(msg)
+
+def get_cli():
     filename = datetime.datetime.fromtimestamp(
         time.time()).strftime("%d-%m-%Y.p")
     if os.path.isfile(filename):
-    #    tasks = pickle.load(open(filename, "rb"))
         msg = "Welcome to the TaskCLI, Loaded previous data."
         cli = pickle.load(open(filename, "rb"))
     else:
-    #    tasks = {}
         msg = "Welcome to TaskCLI, no data to load."
+        cli = TaskCLI() 
+    return cli, msg
+
+def run_unit_tests(cli=None):
+    if not cli:
+        print "Started Unit Tests\n"
+    
+        """ Test Shortcut """
+        print " Testing Shortcut..." 
+        sc = Shortcut()
+        # Test we pass arguments to a function
+        result = sc.run_cmd("unit_test abc 123")
+        assert result == ["abc", "123"]
+        # Test we handle duff shortcuts
+        result = sc.run_cmd("giberish sdf dg sdg ")
+        assert type(result) is str
+        print " ...Shortcut Passed.\n"
+    
+        """ Test Timer """
+        print " Testing Timer..."
+        t = Timer()
+        # Check the timer is automatically started.
+        assert t.status == "Running"
+        t.stop()
+        assert t.status == "Stopped"
+        # Check the start and stop times returned.
+        assert type(t.start_time()) is tuple
+        assert type(t.start_time()[0]) is str and type(t.start_time()[1]) is str    
+        assert t.start_time() == t.stop_time()
+        # Check the total seconds is a small number.
+        seconds = t.total_time().total_seconds()
+        assert seconds >= 0 and seconds <= 1
+        print " ...Timer Passed.\n"
+    
+        """ Test Task """
+        print " Testing Task..."
+        # Test creation and initiation.
+        parent  = Task(name="parent", parent=None)
+        child1  = Task(name="child1", parent=parent)
+        assert (child1.name == "child1" and child1.parent == parent and
+                child1.status == "Stopped" and child1.timers == [])
+        # Check start and stop behaviour is sensible.
+        child1.stop()
+        assert (child1.status == "Stopped" and child1.timers == [])
+        for ii in range(2):
+            child1.start()
+            assert (child1.status == "Running" and len(child1.timers) == 1 and
+                    type(child1.timers[0]) is type(Timer()))
+        child1.stop()
+        assert (child1.status == "Stopped" and len(child1.timers) == 1 and
+                    type(child1.timers[0]) is type(Timer()))
+        print " ...Task Passed.\n"
+    
+        """ Test TaskCLI """
+        print " Testing TaskCLI..."
         cli = TaskCLI()
+    else:
+        print " Testing TaskCLI..."
 
-    cli.cmdloop(msg)    
-
-def run_unit_tests():
-    print "Started Unit Tests\n"
-
-    """ Test Shortcut """
-    print " Testing Shortcut..." 
-    sc = Shortcut()
-    # Test we pass arguments to a function
-    result = sc.run_cmd("unit_test abc 123")
-    assert result == ["abc", "123"]
-    # Test we handle duff shortcuts
-    result = sc.run_cmd("giberish sdf dg sdg ")
-    assert type(result) is str
-    print " ...Shortcut Passed.\n"
-
-    """ Test Timer """
-    print " Testing Timer..."
-    t = Timer()
-    # Check the timer is automatically started.
-    assert t.status == "Running"
-    t.stop()
-    assert t.status == "Stopped"
-    # Check the start and stop times returned.
-    assert type(t.start_time()) is tuple
-    assert type(t.start_time()[0]) is str and type(t.start_time()[1]) is str    
-    assert t.start_time() == t.stop_time()
-    # Check the total seconds is a small number.
-    seconds = t.total_time().total_seconds()
-    assert seconds >= 0 and seconds <= 1
-    print " ...Timer Passed.\n"
-
-    """ Test Task """
-    print " Testing Task..."
-    # Test creation and initiation.
-    parent  = Task(name="parent", parent=None)
-    child1  = Task(name="child1", parent=parent)
-    assert (child1.name == "child1" and child1.parent == parent and
-            child1.status == "Stopped" and child1.timers == [])
-    # Check start and stop behaviour is sensible.
-    child1.stop()
-    assert (child1.status == "Stopped" and child1.timers == [])
-    for ii in range(2):
-        child1.start()
-        assert (child1.status == "Running" and len(child1.timers) == 1 and
-                type(child1.timers[0]) is type(Timer()))
-    child1.stop()
-    assert (child1.status == "Stopped" and len(child1.timers) == 1 and
-                type(child1.timers[0]) is type(Timer()))
-    print " ...Task Passed.\n"
-
-    """ Test TaskCLI """
-    print " Testing TaskCLI..."
-    cli = TaskCLI()
     cli.help_help()
     cli.do_SC("dummy")
+    cli.do_M("This is the first message.")
+    cli.do_M("This is the last message.")
     cli.do_addtask("parent_task1")
     cli.do_addtask("parent_task2")
     cli.do_addtask("-")
