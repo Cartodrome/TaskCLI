@@ -320,7 +320,7 @@ class TaskCLI(cmd.Cmd):
             date, start = timer.start_time()
             dummy, stop = timer.stop_time()
             time_secs   = timer.total_time().total_seconds()
-            time_str    = self._format_seconds(time_secs)
+            time_str    = format_seconds(time_secs)
             status      = timer.status
 
             line = template % (date, start, stop, time_str, status)
@@ -329,17 +329,10 @@ class TaskCLI(cmd.Cmd):
             if time_secs:
                 total_time += time_secs
 
-        final_line = footer % (self._format_seconds(total_time), total_status)
+        final_line = footer % (format_seconds(total_time), total_status)
         task_times.append(final_line)
 
         return task_times
-
-    def _format_seconds(self, total):
-        """_format_seconds
-        """
-        hours = int(total)/(60*60)
-        mins  = (int(total)/60)%60
-        return "%dh%02dm" % (hours, mins)  
     
     def _set_new_prompt(self, text=None):
         """ _set_new_prompt
@@ -554,6 +547,32 @@ class Shortcut():
     def _parse_input(self, text):
         return text.split()[0], text.split()[1:]
 
+def format_seconds(seconds):
+    """format_seconds
+
+    Converts X number of seconds to a string of the format HhMMm (e.g 2h32m).
+
+    Params:  seconds - The number of seconds.
+
+    Returns: string of the formatted seconds.
+    """
+    hours = int(seconds)/(60*60)
+    mins  = (int(seconds)/60)%60
+    return "%dh%02dm" % (hours, mins)  
+
+def get_sub_tasks(task):
+    """get_sub_tasks
+
+    Gets the sub_tasks of a given task.
+
+    Params:  task - The Task object.
+
+    Returns: A list of child Tasks.
+    """
+    sub_tasks = cli.get_tasks(parent=task)
+    for sub_task in sub_tasks:
+        sub_tasks.extend(get_sub_tasks(sub_task))
+    return sub_tasks 
 
 def get_args():
     parser = argparse.ArgumentParser(description="TaskCLI")
@@ -584,7 +603,7 @@ def start_cli():
 
     cli.cmdloop(msg)    
 
-def start_unit_tests():
+def run_unit_tests():
     print "Started Unit Tests\n"
 
     """ Test Shortcut """
@@ -672,6 +691,6 @@ if __name__ == '__main__':
     if args.mode == "CLI":
         start_cli()
     elif args.mode == "UNIT":
-        start_unit_tests()
+        run_unit_tests()
     else:
-        AssertionError("Failed to start.")
+        AssertionError("TaskCLI failed to start.")

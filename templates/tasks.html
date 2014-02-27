@@ -8,7 +8,7 @@
     <table class="hoverTable"> 
       <tr>
   {% for header in headers %}
-        <th>{{ header }}</th>
+        <th class={{ header }}>{{ header }}</th>
   {% endfor %}
       </tr>
   {% for entry in tables_entries[table] %}

@@ -1,9 +1,11 @@
 from flask import Flask, render_template, url_for
-from TaskCLI import TaskCLI
+from TaskCLI import TaskCLI, format_seconds, get_sub_tasks
 from collections import namedtuple
 import thread
 import traceback
 import utils
+import os
+import argparse
 
 log = utils.get_logger(name=__name__)
 CLI_NUM = 0
@@ -23,15 +25,14 @@ def tasks():
     tables_entries = {}
     for task in cli.get_tasks(parent="None"):
         entries = []
-        log.debug("Found task: %s", task.get_name())
+        log.debug("Found task: %s", task.name)
         sub_tasks = get_sub_tasks(task)
-        log.debug("Found subtasks: %s", ", ".join([t.get_name() for t in 
-                                                   sub_tasks]))
+        log.debug("Found subtasks: %s", ", ".join([t.name for t in sub_tasks]))
         sub_tasks.append(task)
-        sub_tasks.sort(key=lambda task: task.get_name())
+        sub_tasks.sort(key=lambda task: task.name)
         total_time = 0
         for sub_task in sub_tasks:
-            for timer in sub_task.get_timers():
+            for timer in sub_task.timers:
 
                 date, start = timer.start_time()
                 dummy, stop = timer.stop_time()
@@ -39,15 +40,15 @@ def tasks():
                 time_str    = format_seconds(time_secs)
                 status      = timer.get_status()
 
-                entries.append(entry(Task=sub_task.get_name().strip(
-                                            task.get_name()),
+                entries.append(entry(Task=sub_task.name.lstrip(
+                                                        task.name.lstrip("-")),
                                      Date=date,
                                      Start=start,
                                      Stop=stop,
                                      Total=time_str,
                                      Status=status))
 
-                if sub_task.get_name() == task.get_name():
+                if sub_task.name == task.name:
                     if time_secs:
                         total_time += time_secs
 
@@ -57,9 +58,9 @@ def tasks():
                              Start="",
                              Stop="",
                              Total=format_seconds(total_time),
-                             Status=task.get_status()))
+                             Status=task.status))
 
-        tables_entries[task.get_name()] = entries 
+        tables_entries[task.name] = entries 
         log.debug("%s entry(s) for task", len(entries))
         log.debug("\n%s", "\n".join([e.Task for e in entries]))
 
@@ -79,26 +80,55 @@ def get_urls():
 
     return links
 
-def get_sub_tasks(task):
-    sub_tasks = cli.get_tasks(parent=task)
-    for sub_task in sub_tasks:
-        sub_tasks.extend(get_sub_tasks(sub_task))
-    return sub_tasks
+def get_args():
+    parser = argparse.ArgumentParser(description="TaskCLI WebServer")
+    parser.add_argument('mode', metavar='<mode>', type=str, 
+        help="Either - 'DEV' (to run as a development server), 'LIVE' (to run "
+             "the Live server), 'UNIT' (to run unit tests).")
+    parser.add_argument('--noreload', action='store_true',
+        help="stop the development server from autoreloading")
+    
+    args = parser.parse_args()
 
-def format_seconds(total):
-    hours = int(total)/(60*60)
-    mins  = (int(total)/60)%60
-    return "%dh%02dm" % (hours, mins)  
+    if args.mode in ["UNIT", "DEV", "LIVE"]:
+        pass
+    else:
+        parser.print_usage()
+        quit()
+
+    return args
+
+def start_unit_tests():
+    pass
+
+def start_live_server():
+    cli = TaskCLI()
+    thread.start_new_thread(cli.cmdloop, ("Welcome to TaskCLI",))
+    app.run()
+
+def start_dev_server(use_reloader=True):
+    # If we're not careful here the Werkzeug reloader will created multiple
+    # instances of the TaskCLI object resulting in some funky behaviour. More
+    # details here: http://stackoverflow.com/questions/11571656
+    if use_reloader and not os.environ.get("WERKZEUG_RUN_MAIN"):
+        log.info('startup: pid %d is the werkzeug reloader', os.getpid())
+    else:
+        log.info('startup: pid %d is the active werkzeug', os.getpid())
+        cli = TaskCLI()
+        thread.start_new_thread(cli.cmdloop, ("Development CLI",))
+
+    app.run(debug=True, use_reloader=use_reloader)
+
 
 if __name__ == "__main__":
-    
-    # Create the CLI and start it.
-    cli = TaskCLI()
-    thread.start_new_thread(cli.cmdloop, ("test",))
-    
-    # Run the app. Will block here until App exists.
-    app.run(debug=True)
-    #app.run()
 
-    # If the App is reloaded kill the existing CLI
-    cli.do_exit(0)
+    args = get_args()
+
+    if args.mode == "UNIT":
+        start_unit_tests()
+    elif args.mode == "DEV":
+        start_dev_server(use_reloader=(not args.noreload))
+    elif args.mode == "LIVE":
+        start_live_server()
+    else:
+        AssertionError("Webserver failed to start.")
