@@ -5,7 +5,6 @@ import textwrap
 import pickle
 import os
 import sys
-import thread
 import argparse
 from thread import start_new_thread
 try:
@@ -13,7 +12,6 @@ try:
 except:
     print ("Warning: Auto-completion won't work on Windows without the "
            "pyreadline module")
-
 
 
 class TaskCLI(cmd.Cmd):
@@ -40,8 +38,19 @@ class TaskCLI(cmd.Cmd):
         # Create the object that contains the shortcuts.
         self._shortcut = Shortcut()
 
-        # Setup thread to restart at midnight.
-        start_new_thread(restart_at_midnight())
+    def reset(self):
+        # Save off the BaseCLI and subsequently all child objects.
+        pickle.dump(self, open("%s.p" % self.date, "wb"))
+        
+        # Reset the class values now they've been saved off
+        self._current_task = None
+        self._tasks = {}
+        self.messages = []
+        self._set_new_prompt(text="")
+        self.date = datetime.datetime.fromtimestamp(
+                                              time.time()).strftime("%d-%m-%Y")
+        self.__setstate__(self.__dict__)
+        self._log("Reset TaskCLI")
 
     def __getstate__(self):
         self._log("Saving TaskCLI data")
@@ -242,6 +251,7 @@ class TaskCLI(cmd.Cmd):
         # Save off the BaseCLI and subsequently all child objects.
         pickle.dump(self, open(filename, "wb"))
 
+        print "Exiting"
         return True
 
     def help_exit(self):
@@ -598,17 +608,24 @@ def get_args():
     return args
 
 def restart_at_midnight(cli):
-        """Restarts the CLI at midnight"""
-        time.sleep((datetime.now().replace(hour=23,
-                                           minute=59,
-                                           second=59,
-                                           microsecond=999) -
-                    datetime.now()).total_seconds())
-        cli.do_exit("")
-        start_cli(cli=get_cli(), msg="TaskCLI was restarted at midnight")
+    """Restarts the CLI at midnight"""
+    sleep_time = (datetime.datetime.now().replace(hour=23,
+                                                  minute=59,
+                                                  second=59,
+                                                  microsecond=999) -
+                      datetime.datetime.now()).total_seconds()
+    time.sleep(sleep_time)
+    cli.reset()
+    start_new_thread(restart_at_midnight, (cli,))
 
 def start_cli(cli, msg="Welcome to TaskCLI"):
+    start_new_thread(restart_at_midnight, (cli,))
     cli.cmdloop(msg)
+
+def simulate_cmd(cli, cmd):
+    l = cli.precmd(cmd)
+    r = cli.onecmd(l)
+    cli.postcmd(r, l)
 
 def get_cli():
     filename = datetime.datetime.fromtimestamp(
@@ -713,7 +730,8 @@ if __name__ == '__main__':
     args = get_args()
 
     if args.mode == "CLI":
-        start_cli()
+        cli, msg = get_cli()
+        start_cli(cli=cli, msg=msg)
     elif args.mode == "UNIT":
         run_unit_tests()
     else:

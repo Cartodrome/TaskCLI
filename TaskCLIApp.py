@@ -9,10 +9,15 @@ import os
 import argparse
 import time
 import logging
+import re
+import pickle
 
 log = utils.get_logger(name=__name__)
 CLI_NUM = 0
 app = Flask(__name__)
+
+r_file = re.compile("(?P<day>[0-3][0-9])-(?P<month>[0-1][0-9])-"
+                    "(?P<year>[1-2][0-9]{3}).p")
 
 @app.route("/")
 def home_page():
@@ -28,13 +33,31 @@ def messages():
     else:
         return "No message to display."
 
+@app.route("/historical_tasks")
+def historical_tasks():
+    tasks = []
+    for f in os.listdir("."):
+        r = r_file.match(f)
+        if r:
+            d = r.groupdict()
+            tasks.append((d["day"], d["month"], d["year"]))
+
+    return render_template("historical_tasks.html", tasks=tasks)
+
+
 @app.route("/tasks")
-def tasks():   
+def tasks(task_name=None):
+    # Show the current cli by default but allow historical views
+    if task_name is not None:
+        task_cli = pickle.load(open(task_name + ".p", "rb"))
+    else:
+        task_cli = cli   
+
     log.debug("Loading /tasks")
     headers        = ("Task", "Date", "Start", "Stop", "Total", "Status") 
     entry          = namedtuple("Entry", headers)
     tables_entries = {}
-    tasks = cli.get_tasks(parent="None")
+    tasks = task_cli.get_tasks(parent="None")
     if not tasks:
         return "No tasks to display."
 
@@ -159,7 +182,7 @@ if __name__ == "__main__":
     if args.mode == "UNIT":
         start_unit_tests(cli)
     elif args.mode == "DEV":
-        start_dev_server(cli, msg, use_reloader=(not args.noreload))
+        start_dev_server(cli, use_reloader=(not args.noreload))
     elif args.mode == "LIVE":
         start_live_server(cli, msg)
     else:

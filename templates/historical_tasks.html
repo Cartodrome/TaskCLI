@@ -1,0 +1,12 @@
+<!doctype html>
+<title>HomePage</title>
+<link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="style.css" type="text/css">
+<div class=page>
+<h1>Historical Tasks</h1>
+  <p>Select a date from the following:</p>
+{% for day, month, year in tasks %}	
+  {% set task_name = day + "-" + month + "-" + year %}
+  <p><a href="/tasks?task_name={{ task_name }}">{{ task_name }}</a></p>
+{% endfor %}
+</div>
