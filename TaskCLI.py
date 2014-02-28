@@ -7,23 +7,28 @@ import os
 import sys
 import thread
 import argparse
+from thread import start_new_thread
+try:
+    import pyreadline
+except:
+    print ("Warning: Auto-completion won't work on Windows without the "
+           "pyreadline module")
+
+
 
 class TaskCLI(cmd.Cmd):
     """CLI that can be used to carry out simple operations."""
-    def __init__(self, tasks={}):
+    def __init__(self):
         # Initiate the base class.
         cmd.Cmd.__init__(self)
         # Overwrite the prompt with a custom version.
         self._set_new_prompt(text="")
 
-        # Dictionary for storing Tasks.
-        self._tasks = tasks
-
-        # The current task
+        self._tasks = {}
         self._current_task = None
-
-        # a list of messages
         self.messages = []
+        self.date = datetime.datetime.fromtimestamp(
+                                              time.time()).strftime("%d-%m-%Y")
 
         # Wrapper for formatting long strings
         self._wrapper = self._get_wrapper()
@@ -34,6 +39,9 @@ class TaskCLI(cmd.Cmd):
 
         # Create the object that contains the shortcuts.
         self._shortcut = Shortcut()
+
+        # Setup thread to restart at midnight.
+        start_new_thread(restart_at_midnight())
 
     def __getstate__(self):
         self._log("Saving TaskCLI data")
@@ -58,7 +66,7 @@ class TaskCLI(cmd.Cmd):
 
         Purpose: Logs a line of text to the log file.
 
-        Params:  line - The line of text to be logged. 
+        Params:  line - The line of text to be logged.
 
         Returns: Nothing.
         """
@@ -68,7 +76,7 @@ class TaskCLI(cmd.Cmd):
         description = ("Logs a line of text to the output file.")
         arguments = {"line" : "The line to be logged to file"}
         self._help_text(description=description,
-                        arguments=arguments)  
+                        arguments=arguments)
 
     def do_SC(self, text):
         """do_SC
@@ -88,7 +96,7 @@ class TaskCLI(cmd.Cmd):
         description = ("Pass text to SC to execute a shortcut")
         arguments = {"text" : "The text to be passed to SC"}
         self._help_text(description=description,
-                        arguments=arguments)          
+                        arguments=arguments)
 
     def do_addtask(self, task):
         """do_addtask
@@ -96,7 +104,7 @@ class TaskCLI(cmd.Cmd):
         Purpose: Creates a new Task that time can be tracked against and
                  notes added to.
 
-        Params:  task - The name of the Task. 
+        Params:  task - The name of the Task.
 
         Returns: Nothing.
         """
@@ -111,7 +119,7 @@ class TaskCLI(cmd.Cmd):
 
         if task_name in self._tasks:
             self._to_screen("Task already exists, please choose another name."
-                            "\nCurrent tasks are:\n  %s" % 
+                            "\nCurrent tasks are:\n  %s" %
                             "\n  ".join(self._tasks))
             return
         else:
@@ -122,9 +130,9 @@ class TaskCLI(cmd.Cmd):
             self._log("Added a new task: %s" % task_name)
 
     def help_addtask(self):
-        description = ("Creates a new task. Once the task is started " 
-                       "notes can be made against it and the time " 
-                       "spent on the task is tracked. Tasks themselves " 
+        description = ("Creates a new task. Once the task is started "
+                       "notes can be made against it and the time "
+                       "spent on the task is tracked. Tasks themselves "
                        "can have subtasks.")
         arguments = {"task" : "The name of the task, must be unique."}
         self._help_text(description=description,
@@ -157,7 +165,7 @@ class TaskCLI(cmd.Cmd):
             self._set_new_prompt(text=task.name)
             self._current_task = task
             self._log("Started Task: %s" % self._current_task.name)
-            
+
     def help_starttask(self):
         description = ("Starts an existing task. Once the task is "
                        "started notes can be made against it and the "
@@ -177,7 +185,7 @@ class TaskCLI(cmd.Cmd):
         if not text:
             completions = self._tasks.keys()
         else:
-            completions = [t for t in self._tasks if 
+            completions = [t for t in self._tasks if
                            t.startswith(text)]
         return completions
 
@@ -206,7 +214,7 @@ class TaskCLI(cmd.Cmd):
                        "parent it drops back down to the parent.")
         arguments = {}
         self._help_text(description=description,
-                        arguments=arguments)        
+                        arguments=arguments)
 
     def do_EOF(self, line):
         self.do_exit(line)
@@ -229,12 +237,11 @@ class TaskCLI(cmd.Cmd):
         self._log("\n" + self.do_times("", user_called=False))
 
         # Use the date as the filename.
-        filename = datetime.datetime.fromtimestamp(
-            time.time()).strftime("%d-%m-%Y.p")
+        filename = "%s.p" % self.date
 
         # Save off the BaseCLI and subsequently all child objects.
         pickle.dump(self, open(filename, "wb"))
-        
+
         return True
 
     def help_exit(self):
@@ -247,7 +254,7 @@ class TaskCLI(cmd.Cmd):
                        "picklr file.")
         arguments = {}
         self._help_text(description=description,
-                        arguments=arguments)        
+                        arguments=arguments)
 
     def do_times(self, line, user_called=True):
         """do_times
@@ -263,7 +270,7 @@ class TaskCLI(cmd.Cmd):
         for task in self._tasks.values():
             task_times[task.name] = self._format_timers(task)
 
-        for task, details in sorted(task_times.items(), 
+        for task, details in sorted(task_times.items(),
                                     key=lambda x: x[1]):
             for detail in details:
                 print_out += detail + "\n"
@@ -275,7 +282,7 @@ class TaskCLI(cmd.Cmd):
             return print_out
 
     def help_times(self):
-        description = "Prints the time spent on tasks." 
+        description = "Prints the time spent on tasks."
         arguments = {}
         self._help_text(arguments=arguments,
                         description=description)
@@ -286,17 +293,17 @@ class TaskCLI(cmd.Cmd):
         Purpose: Prints a list of all the current tasks.
         """
         for task in self._tasks.values():
-            print task.name   
+            print task.name
 
     def help_tasks(self):
-        description = "Prints a list of all tasks." 
+        description = "Prints a list of all tasks."
         arguments = {}
         self._help_text(arguments=arguments,
                         description=description)
 
     def help_help(self):
         description = ("Returns instructions on how to use a command. Can be "
-                       "called with 'help' <command> or '?' <command>.") 
+                       "called with 'help' <command> or '?' <command>.")
         arguments = {"command": "The command you require help with"}
         self._help_text(arguments=arguments,
                         description=description)
@@ -307,7 +314,7 @@ class TaskCLI(cmd.Cmd):
         title    = "Task: %s" % task.name
         headers  = "DATE\t\t START\t STOP\t TOTAL\t STATUS"
         template = "%s\t %s\t %s\t %s\t %s"
-        footer   = "TOTAL:\t\t \t \t %s\t %s"        
+        footer   = "TOTAL:\t\t \t \t %s\t %s"
         task_times = []
         task_times.append(title)
         task_times.append(headers)
@@ -330,13 +337,13 @@ class TaskCLI(cmd.Cmd):
         task_times.append(final_line)
 
         return task_times
-    
+
     def _set_new_prompt(self, text=None):
         """ _set_new_prompt
 
         Purpose: Adds text to the pronpt that is displated to the user.
 
-        Params:  text - The text to add to the prompt template.  
+        Params:  text - The text to add to the prompt template.
 
         Returns: Nothing.
         """
@@ -351,7 +358,7 @@ class TaskCLI(cmd.Cmd):
 
         Purpose: prints all help text in a generic format
 
-        Params:  arguments - a Dictionary with the arguments as key and 
+        Params:  arguments - a Dictionary with the arguments as key and
                              a description of the argument as an entry.
                  description - a description of the function.
 
@@ -397,8 +404,7 @@ class TaskCLI(cmd.Cmd):
                        [test(elem) for test in list_of_filters]]
 
     def _get_logfile(self):
-        filename = datetime.datetime.fromtimestamp(
-            time.time()).strftime("cli_logs-%d-%m-%Y.txt")
+        filename = "cli_logs-%s.txt" % self.date
         return open(filename, "a")
 
     def _log(self, message):
@@ -407,7 +413,8 @@ class TaskCLI(cmd.Cmd):
         task_name = " " if not self._current_task else self._current_task.name
         line = "\n[%s] [%s] %s" % (timestamp, task_name, message)
         self._logfile.write(line)
-        return line 
+        return line
+
 
 class Task():
     """The Task CLI used when Tasks are created."""
@@ -496,7 +503,7 @@ class Timer():
             return self._stop_time.strftime("%a %d-%m-%Y"), \
                    self._stop_time.strftime("%H:%M")
         except:
-            return None, None    
+            return None, None
 
     def total_time(self):
         """ Returns the difference between start and stop time.
@@ -504,7 +511,7 @@ class Timer():
         Returns: a datetime.timedelta object
         """
         try:
-            return self._stop_time - self._start_time 
+            return self._stop_time - self._start_time
         except:
             return datetime.datetime.fromtimestamp(time.time()) - \
                    self._start_time
@@ -558,7 +565,7 @@ def format_seconds(seconds):
     """
     hours = int(seconds)/(60*60)
     mins  = (int(seconds)/60)%60
-    return "%dh%02dm" % (hours, mins)  
+    return "%dh%02dm" % (hours, mins)
 
 def get_sub_tasks(cli, task):
     """get_sub_tasks
@@ -573,13 +580,13 @@ def get_sub_tasks(cli, task):
     sub_tasks = cli.get_tasks(parent=task)
     for sub_task in sub_tasks:
         sub_tasks.extend(get_sub_tasks(cli, sub_task))
-    return sub_tasks 
+    return sub_tasks
 
 def get_args():
     parser = argparse.ArgumentParser(description="TaskCLI")
-    parser.add_argument('mode', metavar='<mode>', type=str, 
+    parser.add_argument('mode', metavar='<mode>', type=str,
         help="Either 'CLI' (to start tool) or 'UNIT' (to run unit tests).")
-    
+
     args = parser.parse_args()
 
     if args.mode in ["UNIT", "CLI"]:
@@ -589,6 +596,16 @@ def get_args():
         quit()
 
     return args
+
+def restart_at_midnight(cli):
+        """Restarts the CLI at midnight"""
+        time.sleep((datetime.now().replace(hour=23,
+                                           minute=59,
+                                           second=59,
+                                           microsecond=999) -
+                    datetime.now()).total_seconds())
+        cli.do_exit("")
+        start_cli(cli=get_cli(), msg="TaskCLI was restarted at midnight")
 
 def start_cli(cli, msg="Welcome to TaskCLI"):
     cli.cmdloop(msg)
@@ -601,15 +618,15 @@ def get_cli():
         cli = pickle.load(open(filename, "rb"))
     else:
         msg = "Welcome to TaskCLI, no data to load."
-        cli = TaskCLI() 
+        cli = TaskCLI()
     return cli, msg
 
 def run_unit_tests(cli=None):
     if not cli:
         print "Started Unit Tests\n"
-    
+
         """ Test Shortcut """
-        print " Testing Shortcut..." 
+        print " Testing Shortcut..."
         sc = Shortcut()
         # Test we pass arguments to a function
         result = sc.run_cmd("unit_test abc 123")
@@ -618,7 +635,7 @@ def run_unit_tests(cli=None):
         result = sc.run_cmd("giberish sdf dg sdg ")
         assert type(result) is str
         print " ...Shortcut Passed.\n"
-    
+
         """ Test Timer """
         print " Testing Timer..."
         t = Timer()
@@ -628,13 +645,13 @@ def run_unit_tests(cli=None):
         assert t.status == "Stopped"
         # Check the start and stop times returned.
         assert type(t.start_time()) is tuple
-        assert type(t.start_time()[0]) is str and type(t.start_time()[1]) is str    
+        assert type(t.start_time()[0]) is str and type(t.start_time()[1]) is str
         assert t.start_time() == t.stop_time()
         # Check the total seconds is a small number.
         seconds = t.total_time().total_seconds()
         assert seconds >= 0 and seconds <= 1
         print " ...Timer Passed.\n"
-    
+
         """ Test Task """
         print " Testing Task..."
         # Test creation and initiation.
@@ -653,7 +670,7 @@ def run_unit_tests(cli=None):
         assert (child1.status == "Stopped" and len(child1.timers) == 1 and
                     type(child1.timers[0]) is type(Timer()))
         print " ...Task Passed.\n"
-    
+
         """ Test TaskCLI """
         print " Testing TaskCLI..."
         cli = TaskCLI()
