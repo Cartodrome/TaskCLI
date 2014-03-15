@@ -1,4 +1,4 @@
-from flask import Flask, render_template, url_for
+from flask import Flask, render_template, url_for, request
 from TaskCLI import get_cli, format_seconds, get_sub_tasks, run_unit_tests, \
                     start_cli
 from collections import namedtuple
@@ -11,6 +11,7 @@ import time
 import logging
 import re
 import pickle
+import math
 
 log = utils.get_logger(name=__name__)
 CLI_NUM = 0
@@ -19,93 +20,131 @@ app = Flask(__name__)
 r_file = re.compile("(?P<day>[0-3][0-9])-(?P<month>[0-1][0-9])-"
                     "(?P<year>[1-2][0-9]{3}).p")
 
+MESSAGE_HEADERS  = ("Time", "Task", "Message")
+TASK_HEADERS     = ("Task", "Date", "Start", "Stop", "Total", "Status") 
+ITEMS_PER_PAGE   = 15
+
 @app.route("/")
 def home_page():
     urls = get_urls()
     log.debug("Found following URLS: %s", "\n".join([url[1] for url in urls]))
     return render_template("home.html", urls=urls)
 
+@app.route("/example")
+def example():
+    return render_template("example.html")
+
 @app.route("/messages")
 def messages():
     log.debug("Loading /messages")
     if cli.messages:
-        return render_template("messages.html", messages=cli.messages)
+        return render_template("messages.html", messages=cli.messages, 
+            message_headers=MESSAGE_HEADERS)
     else:
-        return "No message to display."
+        return render_template("empty.html", text="No message to display.")
 
 @app.route("/historical_tasks")
 def historical_tasks():
+    page = int(request.args.get("page")) if request.args.get("page") else 1 
     tasks = []
     for f in os.listdir("."):
         r = r_file.match(f)
         if r:
             d = r.groupdict()
             tasks.append((d["day"], d["month"], d["year"]))
+    if len(tasks) == 0:
+        return render_template("empty.html", text="No historical tasks")
 
-    return render_template("historical_tasks.html", tasks=tasks)
+    tasks = sorted(tasks, key=lambda x: (x[2] * 365 + x[1] * 31 + x[0]))
+    tasks.reverse()
+
+    prev_page, pages, next_page = get_pages(requested_page=page, 
+        items_per_page=ITEMS_PER_PAGE, num_items=len(tasks), num_options=5)
+
+    return render_template("historical_tasks.html", 
+        tasks=tasks[(page -1) * ITEMS_PER_PAGE: page * ITEMS_PER_PAGE], 
+        prev_page=prev_page, pages=pages, current_page=page, 
+        next_page=next_page)
 
 
-@app.route("/tasks")
-def tasks(task_name=None):
+@app.route("/tasks/")
+def tasks():
+    cli_name = request.args.get("cli_name")
+    task_name = request.args.get("task_name")
     # Show the current cli by default but allow historical views
-    if task_name is not None:
-        task_cli = pickle.load(open(task_name + ".p", "rb"))
+    if cli_name is not None and cli_name != "None":
+        task_cli = pickle.load(open(cli_name + ".p", "rb"))
     else:
         task_cli = cli   
 
-    log.debug("Loading /tasks")
-    headers        = ("Task", "Date", "Start", "Stop", "Total", "Status") 
-    entry          = namedtuple("Entry", headers)
-    tables_entries = {}
+    log.debug("Loading /tasks") 
+    entry   = namedtuple("Entry", TASK_HEADERS)
     tasks = task_cli.get_tasks(parent="None")
     if not tasks:
-        return "No tasks to display."
+        return render_template("empty.html", text="No tasks to display.")
 
-    for task in tasks:
-        entries = []
-        log.debug("Found task: %s", task.name)
-        sub_tasks = get_sub_tasks(cli, task)
-        log.debug("Found subtasks: %s", ", ".join([t.name for t in sub_tasks]))
-        sub_tasks.append(task)
-        sub_tasks.sort(key=lambda task: task.name)
-        total_time = 0
-        for sub_task in sub_tasks:
-            for timer in sub_task.timers:
+    if task_name:
+        for task in tasks:
+            if task.name == task_name:
+                task = task
+                break
+        else:
+            return render_template("empty.html", text="Task does not exist.")  
+    else:
+        # If not specified default to first task in list.
+        task = tasks[0]
+    log.debug("Displaying task: %s", task.name)
 
-                date, start = timer.start_time()
-                dummy, stop = timer.stop_time()
-                time_secs   = timer.total_time().total_seconds()
-                time_str    = format_seconds(time_secs)
-                status      = timer.status
+    # Get associated sub tasks.
+    sub_tasks = get_sub_tasks(cli, task)
+    log.debug("Found subtasks: %s", ", ".join([t.name for t in sub_tasks]))
+    sub_tasks.append(task)
+    sub_tasks.sort(key=lambda task: task.name)
 
-                entries.append(entry(Task=sub_task.name.lstrip(
-                                                        task.name).lstrip("-"),
-                                     Date=date,
-                                     Start=start,
-                                     Stop=stop,
-                                     Total=time_str,
-                                     Status=status))
+    entries = []
+    total_time = 0
+    for sub_task in sub_tasks:
+        for timer in sub_task.timers:
 
-                if sub_task.name == task.name:
-                    if time_secs:
-                        total_time += time_secs
+            date, start = timer.start_time()
+            dummy, stop = timer.stop_time()
+            time_secs   = timer.total_time().total_seconds()
+            time_str    = format_seconds(time_secs)
+            status      = timer.status
 
-        # Add a summary to the end.
-        entries.append(entry(Task="Summary",
-                             Date="",
-                             Start="",
-                             Stop="",
-                             Total=format_seconds(total_time),
-                             Status=task.status))
+            entries.append(entry(Task=sub_task.name.lstrip(
+                                                    task.name).lstrip("-"),
+                                 Date=date,
+                                 Start=start,
+                                 Stop=stop,
+                                 Total=time_str,
+                                 Status=status))
 
-        tables_entries[task.name] = entries 
-        log.debug("%s entry(s) for task", len(entries))
-        log.debug("\n%s", "\n".join([e.Task for e in entries]))
+            if sub_task.name == task.name:
+                if time_secs:
+                    total_time += time_secs
 
-    log.debug("Generating tables: %s", ", ".join(tables_entries))
+    # Add a summary to the end.
+    entries.append(entry(Task="Summary",
+                         Date="",
+                         Start="",
+                         Stop="",
+                         Total=format_seconds(total_time),
+                         Status=task.status))
+
+    log.debug("%s entry(s) for task", len(entries))
+
+    messages = [message for message in cli.messages if message[1] in 
+                [task.name for sub_task in sub_tasks]]
+
     return render_template("tasks.html",
-                           headers=headers,
-                           tables_entries=tables_entries)
+                           current_task=task,
+                           tasks=tasks,
+                           messages=messages,
+                           entries=entries,
+                           task_headers=TASK_HEADERS,
+                           message_headers=MESSAGE_HEADERS,
+                           cli_name=cli_name)
 
 def get_urls():
     links = []
@@ -116,6 +155,35 @@ def get_urls():
             log.debug(traceback.format_exc())
 
     return links
+
+def get_pages(requested_page, items_per_page, num_items, num_options):
+    print requested_page, items_per_page, num_items, num_options
+    first_page = requested_page - (num_options/2)
+    total_pages =  int(math.ceil(num_items / float(items_per_page))) 
+    
+    if first_page < 1:
+        first_page = 1
+    if first_page == requested_page:
+        prev = requested_page
+    else:
+        prev = requested_page - 1 
+
+    last_page = first_page + num_options
+
+    print last_page, first_page, total_pages, prev
+    if last_page > total_pages:
+        first_page += total_pages - last_page
+        if first_page < 1:
+            first_page = 1
+        last_page = total_pages
+    if last_page == requested_page:
+        next = requested_page
+    else:
+        next = requested_page + 1
+
+    print prev, range(first_page, last_page + 1), next
+
+    return prev, range(first_page, last_page + 1), next
 
 def get_args():
     parser = argparse.ArgumentParser(description="TaskCLI WebServer")

@@ -1,23 +1,42 @@
-<!doctype html>
-<title>Tasks Template</title>
-<link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
-<link rel="stylesheet" href="style.css" type="text/css">
-<div class=page>
-{% for table in tables_entries %}	
-  <h1>{{ table }}</h1>
-    <table class="hoverTable"> 
+{% extends "base.html" %}
+{% block title %}Tasks{% endblock %}
+{% block content %}
+  <div class="span3">
+    <ul class="nav nav-list">
+      <li class="nav-header">Tasks</li>
+  {% for task in tasks %}
+    {% if task == current_task %}
+      <li class="active"><a href="/tasks?task_name={{ task.name }}&cli_name={{ cli_name }}">
+        {{ task.name }}</a></li>
+    {% else %}
+      <li><a href="/tasks?task_name={{ task.name }}&cli_name={{ cli_name }}"\>
+        {{ task.name }}</a></li>
+    {% endif %}
+  {% endfor %}
+    </ul>
+  </div>  
+
+  <div class="span9">
+    <h1 class="page-header">{{ current_task.name }}</h1> 
+    <h2>Tasks</h2>
+    <table class="table table-bordered table-hover">
       <tr>
-  {% for header in headers %}
+  {% for header in task_headers %}
         <th class={{ header }}>{{ header }}</th>
   {% endfor %}
       </tr>
-  {% for entry in tables_entries[table] %}
+  {% for entry in entries %}
       <tr>
-    {% for header in headers %}
+    {% for header in task_headers %}
         <td>{{ entry[header] }}</td> 
     {% endfor %}    
       </tr>
   {% endfor %}
     </table>
-{% endfor %}
-</div>
+
+    <h2>Messages</h2>
+    {% include  "messages_table.html" %}
+  </div>
+
+
+{% endblock %}

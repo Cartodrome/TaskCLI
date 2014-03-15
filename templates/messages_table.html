@@ -1,0 +1,15 @@
+<h1>{{ table }}</h1>
+  <table class="table table-bordered table-hover">
+    <tr>
+{% for header in message_headers %}
+    <th>{{ header }}</th>
+{% endfor %}
+    </tr>
+{% for message in messages %}  
+    <tr>
+      <td>{{ message[0] }}</td>
+      <td>{{ message[1] }}</td>
+      <td>{{ message[2] }}</td> 
+    </tr>
+{% endfor %}    
+</table>

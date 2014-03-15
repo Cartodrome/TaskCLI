@@ -2,6 +2,8 @@
 {% block title %}Messages{% endblock %}
 {% block content %}
 <div class="span12">
-  {% include  "messages_table.html" %}
+  <div class="alert alert-warning">
+	<strong>Oops!</strong> {{ text }}
+  </div>
 </div>
 {% endblock %}

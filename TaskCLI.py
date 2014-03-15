@@ -421,8 +421,8 @@ class TaskCLI(cmd.Cmd):
         timestamp = datetime.datetime.fromtimestamp(
             time.time()).strftime("%H:%M:%S")
         task_name = " " if not self._current_task else self._current_task.name
-        line = "\n[%s] [%s] %s" % (timestamp, task_name, message)
-        self._logfile.write(line)
+        line = (timestamp, task_name, message)
+        self._logfile.write("\n[%s] [%s] %s" % line)
         return line
 
 
