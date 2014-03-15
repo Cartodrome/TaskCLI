@@ -225,6 +225,9 @@ class TaskCLI(cmd.Cmd):
         self._help_text(description=description,
                         arguments=arguments)
 
+    def emptyline(self):
+        pass
+
     def do_EOF(self, line):
         self.do_exit(line)
 
@@ -630,7 +633,13 @@ def simulate_cmd(cli, cmd):
 def get_cli():
     filename = datetime.datetime.fromtimestamp(
         time.time()).strftime("%d-%m-%Y.p")
+    user_input = None
     if os.path.isfile(filename):
+        while 1:
+            user_input = raw_input("Found previous data, load it? Y/N")
+            if user_input in ["Y", "N"]:
+                break
+    if user_input == "Y":
         msg = "Welcome to the TaskCLI, Loaded previous data."
         cli = pickle.load(open(filename, "rb"))
     else:
