@@ -157,7 +157,6 @@ def get_urls():
     return links
 
 def get_pages(requested_page, items_per_page, num_items, num_options):
-    print requested_page, items_per_page, num_items, num_options
     first_page = requested_page - (num_options/2)
     total_pages =  int(math.ceil(num_items / float(items_per_page))) 
     
@@ -170,7 +169,6 @@ def get_pages(requested_page, items_per_page, num_items, num_options):
 
     last_page = first_page + num_options
 
-    print last_page, first_page, total_pages, prev
     if last_page > total_pages:
         first_page += total_pages - last_page
         if first_page < 1:
@@ -180,8 +178,6 @@ def get_pages(requested_page, items_per_page, num_items, num_options):
         next = requested_page
     else:
         next = requested_page + 1
-
-    print prev, range(first_page, last_page + 1), next
 
     return prev, range(first_page, last_page + 1), next
 
